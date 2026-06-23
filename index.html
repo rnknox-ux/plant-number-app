@@ -111,6 +111,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
   // ---- CONFIGURE THIS: your Apps Script deployment URL ----
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3pWzNVoLtVdfo0CwE8rcQKG22-BdzUS65Nzxowq7ZZas3Z2VNDKPrblshmfxbjdv7EQ/exec";
@@ -178,14 +179,130 @@
     return Array.from(document.querySelectorAll('.plant-checkbox:checked')).map(cb => cb.value);
   }
 
+const LOGO_DG_COMMAND = "~DGR:LOGO.GRF,1520,19,00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000003FFFFFFFE0007FFFFFFF8200000000060000007FFFFFFFC000FFFFFFFF0300000000060000007FFFFFFF8001FFFFFFFE03800000000E000000FFFFFFFF0003FFFFFFFC03C00000001E000001FFFFFFFE0007FFFFFFF803E00000003E000003FFFFFFFC000FFFFFFFF003F00000007E000007FFFFFFF8001FFFFFFFE003F8000000FE00000FFFFFFFF0003FFFFFFFC003FC000001FE00001FFFFFFFE0007FFFFFFF8003FE000003FE00003FFFFFFFC000FFFFFFFF0003FF000007FE00007FFFFFFF8001FFFFFFFE0003FF80000FFE0000FFFFFFFF0003FFFFFFFC0003FFC0001FFE0001FFFFFFFE0007FFFFFFF80003FFE0003FFE0003FFFFFFFC000FFFFFFFF00003FFF0007FFFFFFFFFE00000000FFF8000000003FFF800FFFFFFF7FFE00000000FFF8000000003FFFC01FFFFFFFFFFE00000000FFF8000000003FFFE03FFFFFFFFFFE00000000FFF8000000003FFFF07FFFFFFFFFFE00000000FFF8000000003FFFF8FFFFFFFFFFFE00000000FFF8000000003FFFFDFFFFFFFFFFFE00000000FFF8000000003FFFFFFFFFFFFFFFFE00000000FFF8000000003FFFFFFFFFFF6FFFFE00000000FFF8000000003FFFFFFFFFFFFFFFFE00000000FFF8000000003FFFFFFFFFFFF7FFFE00000000FFF8000000003FFFFFFFFFFEF7FFFE00000000FFF8000000003FFFFFFEFEFEFFBFF600000000FFF8000000003FFFFFFFFFF6FFF7FE00000000FFF8000000003FFFFFFFFFFAFFF7FE00000000FFF8000000003FFFFFFFFF7FFFFFFE00000000FFF8000000003FFCFFFDFFFEFFEFFE00000000FFF8000000003FFCFFF9FFBFF7DFFE00000000FFF8000000003FFC7FF1FFDFFFFFFE00000000FFF8000000003FFC1FE1FF2FFFAFFE00000000FFF8000000003FFC0FC1FFFFFFFFFE00000000FFF8000000003FFC0781FFFFFFFFFE00000000FFF8000000003FFC0301FFFFFFF7FE00000000FFF8000000003FFC0001FFBFFFDFFE00000000FFF8000000003FFC0001FFF3FE7FF600000000FFF8000000003FFC0001FF9FEF9FFE000000007FFC000000003FFC0003FF9F6F9FFFFFFFFFFE3FFFFFFFFFF83FF80003FF196D8FFFFFFFFFFC1FFFFFFFFFF03FF00003FE0F6F87FFFFFFFFF80FFFFFFFFFE03FE00003FC0F6F83FFFFFFFFF007FFFFFFFFC03FC00003F80FFF81FFFFFFFFE003FFFFFFFF803F800003F00FFF80FFFFFFFFC001FFFFFFFF003F000003E00FFF807FFFFFFF8000FFFFFFFE003E000003C00FFF803FFFFFFF00007FFFFFFC003C000003800FFF801FFFFFFE00003FFFFFF80038000003000FFF800FFFFFFC00001FFFFFF00030000002000FFF8007FFFFF800000FFFFFE000000000000000000003FFFFF0000007FFFFC000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+  function extractPlantNumber(plantId) {
+    const digits = String(plantId).replace(/\D/g, "");
+    if (!digits) return String(plantId);
+    return String(parseInt(digits, 10));
+  }
+
+  function buildLabelZpl(variety, batchNo, createdDate, plantNo) {
+    const qrText = `Variety: ${variety} | Batch: ${batchNo} | Plant: ${plantNo} | Date: ${createdDate}`;
+    const qrTextSafe = qrText.replace(/\^/g, "-").replace(/~/g, "-");
+
+    const borderInset = 24;
+    const labelWidth = 800;
+    const labelHeight = 496;
+    const foldX = labelWidth / 2;
+
+    let dashSegments = [];
+    let y = borderInset;
+    const dashLen = 14, gapLen = 10;
+    while (y < labelHeight - borderInset) {
+      const segH = Math.min(dashLen, labelHeight - borderInset - y);
+      dashSegments.push(`^FO${foldX},${y}^GB2,${segH},2^FS`);
+      y += dashLen + gapLen;
+    }
+    const dashedFoldLine = dashSegments.join("\n");
+
+    const stapleMarginRight = 60;
+    const rightZoneStart = foldX;
+    const rightZoneEnd = labelWidth - borderInset - stapleMarginRight;
+    const qrBlockSize = 240;
+    const qrX = rightZoneStart + Math.floor((rightZoneEnd - rightZoneStart - qrBlockSize) / 2);
+    const qrY = borderInset + Math.floor(((labelHeight - 2*borderInset) - qrBlockSize) / 2);
+
+    return `^XA
+${LOGO_DG_COMMAND}
+^PW${labelWidth}
+^LL${labelHeight}
+^LH0,0
+
+^FO${borderInset},${borderInset}^GB${labelWidth - 2*borderInset},${labelHeight - 2*borderInset},2^FS
+
+^FO34,34^XGR:LOGO.GRF,1,1^FS
+
+^CF0,22
+^FO34,120^FB360,1,0,L^FDVariety:^FS
+^CF0,20
+^FO44,148^FB350,1,0,L^FD${variety}^FS
+
+^CF0,22
+^FO34,190^FB360,1,0,L^FDCreated Date^FS
+^CF0,20
+^FO44,218^FB350,1,0,L^FD${createdDate}^FS
+
+^CF0,22
+^FO34,260^FB120,1,0,L^FDBatch No^FS
+^CF0,20
+^FO160,260^FB230,1,0,L^FD${batchNo}^FS
+
+^CF0,22
+^FO34,295^FB120,1,0,L^FDPlant No^FS
+^CF0,20
+^FO160,295^FB230,1,0,L^FD${plantNo}^FS
+
+${dashedFoldLine}
+
+^FO${qrX},${qrY}^BQN,2,6
+^FDQA,${qrTextSafe}^FS
+
+^XZ
+`;
+  }
+
   function exportExcel() {
-    alert("Excel export coming in the next step.");
-    // Phase 4 will implement this using SheetJS
+    if (!currentBatch) return;
+    const selected = getSelectedPlants();
+    if (selected.length === 0) {
+      alert("No plants selected.");
+      return;
+    }
+
+    const rows = [["Variety", "Created Date", "Batch No", "Plant No"]];
+    selected.forEach((pid, i) => {
+      if (i === 0) {
+        rows.push([currentBatch.variety || "", currentBatch.createdDate || "", currentBatch.batchId || "", pid]);
+      } else {
+        rows.push(["", "", "", pid]);
+      }
+    });
+    rows.push(["Next ID", "", "", ""]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Batch Export");
+    XLSX.writeFile(wb, `batch_${currentBatch.batchId}_export.xlsx`);
   }
 
   function exportZpl() {
-    alert("ZPL export coming in the next step.");
-    // Phase 5 will implement this using the label template
+    if (!currentBatch) return;
+    const selected = getSelectedPlants();
+    if (selected.length === 0) {
+      alert("No plants selected.");
+      return;
+    }
+
+    let allZpl = "";
+    selected.forEach(pid => {
+      allZpl += buildLabelZpl(
+        currentBatch.variety || "",
+        currentBatch.batchId || "",
+        currentBatch.createdDate || "",
+        pid
+      );
+    });
+
+    const blob = new Blob([allZpl], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `batch_${currentBatch.batchId}_labels.zpl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 </script>
 
