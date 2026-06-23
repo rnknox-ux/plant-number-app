@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plant Number App</title>
+<style>
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #f5f5f5;
+  }
+  h1 {
+    font-size: 1.4rem;
+    color: #14532d;
+  }
+  .card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    margin-bottom: 16px;
+  }
+  input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+  button {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.05rem;
+    background: #166534;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    margin-top: 10px;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #999;
+  }
+  .field-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+  }
+  .field-label { font-weight: 600; color: #444; }
+  .plant-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 8px;
+    margin-top: 8px;
+  }
+  .plant-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .error {
+    color: #b91c1c;
+    background: #fee2e2;
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .hidden { display: none; }
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .actions button { flex: 1; }
+  #status { color: #555; font-size: 0.9rem; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>🌿 Plant Number App</h1>
+
+<div class="card">
+  <label for="batchInput"><strong>Enter Batch Number</strong></label><br><br>
+  <input type="text" id="batchInput" placeholder="e.g. 13999" inputmode="numeric">
+  <button id="lookupBtn" onclick="lookupBatch()">Lookup Batch</button>
+  <div id="status"></div>
+</div>
+
+<div class="card hidden" id="resultCard">
+  <div class="field-row"><span class="field-label">Variety</span><span id="resVariety"></span></div>
+  <div class="field-row"><span class="field-label">Created Date</span><span id="resCreatedDate"></span></div>
+  <div class="field-row"><span class="field-label">Batch No</span><span id="resBatchId"></span></div>
+
+  <p><strong>Plants</strong> (<span id="plantCount"></span>) — select which to export/print:</p>
+  <div style="margin-bottom:8px;">
+    <button onclick="selectAllPlants(true)" style="width:auto; padding:6px 10px; font-size:0.85rem;">Select All</button>
+    <button onclick="selectAllPlants(false)" style="width:auto; padding:6px 10px; font-size:0.85rem; background:#999;">Clear</button>
+  </div>
+  <div class="plant-list" id="plantList"></div>
+
+  <div class="actions">
+    <button onclick="exportExcel()">📊 Export Excel</button>
+    <button onclick="exportZpl()">🏷 Export ZPL</button>
+  </div>
+</div>
+
+<script>
+  // ---- CONFIGURE THIS: your Apps Script deployment URL ----
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3pWzNVoLtVdfo0CwE8rcQKG22-BdzUS65Nzxowq7ZZas3Z2VNDKPrblshmfxbjdv7EQ/exec";
+
+  let currentBatch = null;
+
+  async function lookupBatch() {
+    const batch = document.getElementById('batchInput').value.trim();
+    const statusEl = document.getElementById('status');
+    const btn = document.getElementById('lookupBtn');
+
+    if (!batch) {
+      statusEl.innerHTML = '<span class="error">Please enter a batch number.</span>';
+      return;
+    }
+
+    btn.disabled = true;
+    statusEl.textContent = "Looking up batch...";
+    document.getElementById('resultCard').classList.add('hidden');
+
+    try {
+      const url = `${APPS_SCRIPT_URL}?action=lookup&batch=${encodeURIComponent(batch)}`;
+      const resp = await fetch(url);
+      const json = await resp.json();
+
+      if (!json.ok) {
+        statusEl.innerHTML = `<span class="error">${json.error}</span>`;
+        btn.disabled = false;
+        return;
+      }
+
+      currentBatch = json.data;
+      renderResult(currentBatch);
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.innerHTML = `<span class="error">Request failed: ${err}</span>`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function renderResult(data) {
+    document.getElementById('resVariety').textContent = data.variety || '-';
+    document.getElementById('resCreatedDate').textContent = data.createdDate || '-';
+    document.getElementById('resBatchId').textContent = data.batchId || '-';
+    document.getElementById('plantCount').textContent = data.plantIds.length;
+
+    const listEl = document.getElementById('plantList');
+    listEl.innerHTML = '';
+    data.plantIds.forEach(pid => {
+      const div = document.createElement('div');
+      div.className = 'plant-item';
+      div.innerHTML = `<input type="checkbox" class="plant-checkbox" value="${pid}" checked> Plant ${pid}`;
+      listEl.appendChild(div);
+    });
+
+    document.getElementById('resultCard').classList.remove('hidden');
+  }
+
+  function selectAllPlants(state) {
+    document.querySelectorAll('.plant-checkbox').forEach(cb => cb.checked = state);
+  }
+
+  function getSelectedPlants() {
+    return Array.from(document.querySelectorAll('.plant-checkbox:checked')).map(cb => cb.value);
+  }
+
+  function exportExcel() {
+    alert("Excel export coming in the next step.");
+    // Phase 4 will implement this using SheetJS
+  }
+
+  function exportZpl() {
+    alert("ZPL export coming in the next step.");
+    // Phase 5 will implement this using the label template
+  }
+</script>
+
+</body>
+</html>
