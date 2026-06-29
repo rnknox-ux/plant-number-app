@@ -303,7 +303,7 @@ ${dashedFoldLine}
     XLSX.writeFile(wb, `batch_${currentBatch.batchId}_export.xlsx`);
   }
 
-  async function printToZebra() {
+  function printToZebra() {
     if (!currentBatch) return;
     const selected = getSelectedPlants();
     if (selected.length === 0) {
@@ -327,21 +327,39 @@ ${dashedFoldLine}
     const statusEl = document.getElementById('status');
     statusEl.textContent = `Sending ${selected.length} label(s) to printer...`;
 
-    try {
-      const resp = await fetch(relayUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: allZpl,
-      });
-      const json = await resp.json();
-      if (json.ok) {
-        statusEl.textContent = `Sent ${selected.length} label(s) to printer successfully.`;
-      } else {
-        statusEl.innerHTML = `<span class="error">Printer error: ${json.error}</span>`;
-      }
-    } catch (err) {
-      statusEl.innerHTML = `<span class="error">Could not reach print relay: ${err}. Check the relay is running and the phone is on the same WiFi.</span>`;
+    // Use a hidden iframe + real <form> submission instead of fetch().
+    // Browsers block fetch()/XHR from an HTTPS page to an insecure HTTP
+    // address ("mixed content"), but DO allow form navigation to it --
+    // so this is how we get around that restriction for a local relay.
+    const iframeName = "print_target_frame";
+    let iframe = document.getElementById(iframeName);
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.name = iframeName;
+      iframe.id = iframeName;
+      iframe.style.display = "none";
+      document.body.appendChild(iframe);
     }
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = relayUrl;
+    form.target = iframeName;
+
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "zpl";
+    input.value = allZpl;
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+
+    // We can't read the iframe's response (cross-origin from https page to
+    // http relay), so we just report success once submitted. Check the
+    // physical printer / print_relay_log.txt on the laptop to confirm.
+    statusEl.textContent = `Sent ${selected.length} label(s) to the print relay. Check the printer / print_relay_log.txt to confirm.`;
   }
 
   function exportZpl() {
