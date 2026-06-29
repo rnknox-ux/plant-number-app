@@ -109,17 +109,32 @@
     <button onclick="exportExcel()">📊 Export Excel</button>
     <button onclick="exportZpl()">🏷 Export ZPL</button>
   </div>
+  <div class="actions" style="margin-top:8px;">
+    <button onclick="printToZebra()" style="background:#1d4ed8;">🖨 Print to Zebra</button>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
   // ---- CONFIGURE THIS: your Apps Script deployment URL ----
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzGAnY4YdWT1rs-0GwwrhN6JoUwoXWnxccsQOIIGiR5myADT434x0ff_DFINK-tJl8Gvg/exec";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3pWzNVoLtVdfo0CwE8rcQKG22-BdzUS65Nzxowq7ZZas3Z2VNDKPrblshmfxbjdv7EQ/exec";
+
+  function getRelayUrl() {
+    let url = localStorage.getItem("printRelayUrl");
+    if (!url) {
+      url = prompt(
+        "Enter the print relay address shown when you ran print_relay.py on the laptop\n" +
+        "(e.g. http://192.168.1.50:5050/print):"
+      );
+      if (url) localStorage.setItem("printRelayUrl", url);
+    }
+    return url;
+  }
 
   let currentBatch = null;
 
-  async function lookupBatch() {
-    const batch = document.getElementById('batchInput').value.trim();
+  async function lookupBatch(batchOverride) {
+    const batch = (batchOverride || document.getElementById('batchInput').value).trim();
     const statusEl = document.getElementById('status');
     const btn = document.getElementById('lookupBtn');
 
@@ -128,6 +143,7 @@
       return;
     }
 
+    document.getElementById('batchInput').value = batch;
     btn.disabled = true;
     statusEl.textContent = "Looking up batch...";
     document.getElementById('resultCard').classList.add('hidden');
@@ -146,6 +162,7 @@
       currentBatch = json.data;
       renderResult(currentBatch);
       statusEl.textContent = "";
+      return currentBatch;
     } catch (err) {
       statusEl.innerHTML = `<span class="error">Request failed: ${err}</span>`;
     } finally {
@@ -179,6 +196,29 @@
     return Array.from(document.querySelectorAll('.plant-checkbox:checked')).map(cb => cb.value);
   }
 
+  // --- Auto-lookup when opened via QR code scan (?batch=X&plant=Y) ---
+  async function initFromUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const batchParam = params.get('batch');
+    const plantParam = params.get('plant');
+
+    if (!batchParam) return;
+
+    const data = await lookupBatch(batchParam);
+    if (!data) return;
+
+    if (plantParam) {
+      // Auto-select ONLY the scanned plant, so Export/Print acts on just this one.
+      document.querySelectorAll('.plant-checkbox').forEach(cb => {
+        cb.checked = (cb.value === String(plantParam));
+      });
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = `Scanned: Plant ${plantParam} from Batch ${batchParam}.`;
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', initFromUrlParams);
+
 const LOGO_DG_COMMAND = "~DGR:LOGO.GRF,1520,19,00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000003FFFFFFFE0007FFFFFFF8200000000060000007FFFFFFFC000FFFFFFFF0300000000060000007FFFFFFF8001FFFFFFFE03800000000E000000FFFFFFFF0003FFFFFFFC03C00000001E000001FFFFFFFE0007FFFFFFF803E00000003E000003FFFFFFFC000FFFFFFFF003F00000007E000007FFFFFFF8001FFFFFFFE003F8000000FE00000FFFFFFFF0003FFFFFFFC003FC000001FE00001FFFFFFFE0007FFFFFFF8003FE000003FE00003FFFFFFFC000FFFFFFFF0003FF000007FE00007FFFFFFF8001FFFFFFFE0003FF80000FFE0000FFFFFFFF0003FFFFFFFC0003FFC0001FFE0001FFFFFFFE0007FFFFFFF80003FFE0003FFE0003FFFFFFFC000FFFFFFFF00003FFF0007FFFFFFFFFE00000000FFF8000000003FFF800FFFFFFF7FFE00000000FFF8000000003FFFC01FFFFFFFFFFE00000000FFF8000000003FFFE03FFFFFFFFFFE00000000FFF8000000003FFFF07FFFFFFFFFFE00000000FFF8000000003FFFF8FFFFFFFFFFFE00000000FFF8000000003FFFFDFFFFFFFFFFFE00000000FFF8000000003FFFFFFFFFFFFFFFFE00000000FFF8000000003FFFFFFFFFFF6FFFFE00000000FFF8000000003FFFFFFFFFFFFFFFFE00000000FFF8000000003FFFFFFFFFFFF7FFFE00000000FFF8000000003FFFFFFFFFFEF7FFFE00000000FFF8000000003FFFFFFEFEFEFFBFF600000000FFF8000000003FFFFFFFFFF6FFF7FE00000000FFF8000000003FFFFFFFFFFAFFF7FE00000000FFF8000000003FFFFFFFFF7FFFFFFE00000000FFF8000000003FFCFFFDFFFEFFEFFE00000000FFF8000000003FFCFFF9FFBFF7DFFE00000000FFF8000000003FFC7FF1FFDFFFFFFE00000000FFF8000000003FFC1FE1FF2FFFAFFE00000000FFF8000000003FFC0FC1FFFFFFFFFE00000000FFF8000000003FFC0781FFFFFFFFFE00000000FFF8000000003FFC0301FFFFFFF7FE00000000FFF8000000003FFC0001FFBFFFDFFE00000000FFF8000000003FFC0001FFF3FE7FF600000000FFF8000000003FFC0001FF9FEF9FFE000000007FFC000000003FFC0003FF9F6F9FFFFFFFFFFE3FFFFFFFFFF83FF80003FF196D8FFFFFFFFFFC1FFFFFFFFFF03FF00003FE0F6F87FFFFFFFFF80FFFFFFFFFE03FE00003FC0F6F83FFFFFFFFF007FFFFFFFFC03FC00003F80FFF81FFFFFFFFE003FFFFFFFF803F800003F00FFF80FFFFFFFFC001FFFFFFFF003F000003E00FFF807FFFFFFF8000FFFFFFFE003E000003C00FFF803FFFFFFF00007FFFFFFC003C000003800FFF801FFFFFFE00003FFFFFF80038000003000FFF800FFFFFFC00001FFFFFF00030000002000FFF8007FFFFF800000FFFFFE000000000000000000003FFFFF0000007FFFFC000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
   function extractPlantNumber(plantId) {
@@ -188,65 +228,52 @@ const LOGO_DG_COMMAND = "~DGR:LOGO.GRF,1520,19,000000000000000000000000000000000
   }
 
   function buildLabelZpl(variety, batchNo, createdDate, plantNo) {
-    const qrText = `Variety: ${variety} | Batch: ${batchNo} | Plant: ${plantNo} | Date: ${createdDate}`;
-    const qrTextSafe = qrText.replace(/\^/g, "-").replace(/~/g, "-");
+    const qrUrl = `https://rnknox-ux.github.io/plant-number-app/?batch=${batchNo}&plant=${plantNo}`;
+    const qrUrlSafe = qrUrl.replace(/\^/g, "-").replace(/~/g, "-");
 
     const borderInset = 24;
-    const labelWidth = 800;
-    const labelHeight = 496;
-    const foldX = labelWidth / 2;
+    const labelWidth = 496;   // 62mm cross-feed direction
+    const labelLength = 800;  // 100mm feed direction
+    const foldY = labelLength / 2;
 
     let dashSegments = [];
-    let y = borderInset;
+    let x = borderInset;
     const dashLen = 14, gapLen = 10;
-    while (y < labelHeight - borderInset) {
-      const segH = Math.min(dashLen, labelHeight - borderInset - y);
-      dashSegments.push(`^FO${foldX},${y}^GB2,${segH},2^FS`);
-      y += dashLen + gapLen;
+    while (x < labelWidth - borderInset) {
+      const segW = Math.min(dashLen, labelWidth - borderInset - x);
+      dashSegments.push(`^FO${x},${foldY}^GB${segW},2,2^FS`);
+      x += dashLen + gapLen;
     }
     const dashedFoldLine = dashSegments.join("\n");
 
-    const stapleMarginRight = 60;
-    const rightZoneStart = foldX;
-    const rightZoneEnd = labelWidth - borderInset - stapleMarginRight;
-    const qrBlockSize = 240;
-    const qrX = rightZoneStart + Math.floor((rightZoneEnd - rightZoneStart - qrBlockSize) / 2);
-    const qrY = borderInset + Math.floor(((labelHeight - 2*borderInset) - qrBlockSize) / 2);
-
     return `^XA
+^PMN
 ${LOGO_DG_COMMAND}
 ^PW${labelWidth}
-^LL${labelHeight}
+^LL${labelLength}
 ^LH0,0
 
-^FO${borderInset},${borderInset}^GB${labelWidth - 2*borderInset},${labelHeight - 2*borderInset},2^FS
+^FO${borderInset},${borderInset}^GB${labelWidth - 2*borderInset},${labelLength - 2*borderInset},2^FS
 
-^FO34,34^XGR:LOGO.GRF,1,1^FS
-
-^CF0,22
-^FO34,120^FB360,1,0,L^FDVariety:^FS
-^CF0,20
-^FO44,148^FB350,1,0,L^FD${variety}^FS
+^FO40,34^XGR:LOGO.GRF,1,1^FS
 
 ^CF0,22
-^FO34,190^FB360,1,0,L^FDCreated Date^FS
-^CF0,20
-^FO44,218^FB350,1,0,L^FD${createdDate}^FS
+^FO40,140^A0N,22,22^FDVariety:^FS
+^FO50,168^A0N,20,20^FD${variety}^FS
 
-^CF0,22
-^FO34,260^FB120,1,0,L^FDBatch No^FS
-^CF0,20
-^FO160,260^FB230,1,0,L^FD${batchNo}^FS
+^FO40,200^A0N,22,22^FDBatch No^FS
+^FO50,228^A0N,20,20^FD${batchNo}^FS
 
-^CF0,22
-^FO34,295^FB120,1,0,L^FDPlant No^FS
-^CF0,20
-^FO160,295^FB230,1,0,L^FD${plantNo}^FS
+^FO40,260^A0N,22,22^FDCreated Date^FS
+^FO50,288^A0N,20,20^FD${createdDate}^FS
+
+^FO40,320^A0N,22,22^FDPlant No^FS
+^FO50,348^A0N,20,20^FD${plantNo}^FS
 
 ${dashedFoldLine}
 
-^FO${qrX},${qrY}^BQN,2,6
-^FDQA,${qrTextSafe}^FS
+^FO128,${foldY + 40}^BQN,2,6
+^FDQA,${qrUrlSafe}^FS
 
 ^XZ
 `;
@@ -274,6 +301,47 @@ ${dashedFoldLine}
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Batch Export");
     XLSX.writeFile(wb, `batch_${currentBatch.batchId}_export.xlsx`);
+  }
+
+  async function printToZebra() {
+    if (!currentBatch) return;
+    const selected = getSelectedPlants();
+    if (selected.length === 0) {
+      alert("No plants selected.");
+      return;
+    }
+
+    const relayUrl = getRelayUrl();
+    if (!relayUrl) return;
+
+    let allZpl = "";
+    selected.forEach(pid => {
+      allZpl += buildLabelZpl(
+        currentBatch.variety || "",
+        currentBatch.batchId || "",
+        currentBatch.createdDate || "",
+        pid
+      );
+    });
+
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = `Sending ${selected.length} label(s) to printer...`;
+
+    try {
+      const resp = await fetch(relayUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: allZpl,
+      });
+      const json = await resp.json();
+      if (json.ok) {
+        statusEl.textContent = `Sent ${selected.length} label(s) to printer successfully.`;
+      } else {
+        statusEl.innerHTML = `<span class="error">Printer error: ${json.error}</span>`;
+      }
+    } catch (err) {
+      statusEl.innerHTML = `<span class="error">Could not reach print relay: ${err}. Check the relay is running and the phone is on the same WiFi.</span>`;
+    }
   }
 
   function exportZpl() {
